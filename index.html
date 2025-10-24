@@ -1,0 +1,89 @@
+
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>المساعد الأخلاقي المحايد</title>
+    <link rel="stylesheet" href="/static/style.css"> 
+</head>
+<body>
+    <div class="container">
+        <h1>المساعد الأخلاقي المحايد</h1>
+        <p>أدخل السيناريو الأخلاقي المعقد، وسيقوم النظام بتوليد أسئلة استجوابية حيادية لمساعدتك في اتخاذ قرار مدروس.</p>
+        
+        <textarea id="scenarioText" placeholder="مثال: هل يجب أن تؤجل الشركة الإبلاغ عن ثغرة أمنية بسيطة لمنع خسائر الأسهم؟..." required></textarea>
+        <button onclick="analyzeScenario()" id="analyzeButton">تحليل السيناريو وتوليد الأسئلة</button>
+        
+        <div id="results">
+            <p style="text-align: center;">النتائج والتحليل الأخلاقي سيظهر هنا بعد الإرسال.</p>
+        </div>
+    </div>
+
+    <script>
+        const MOCK_INPUT_DIM = 256; 
+        
+        function analyzeScenario() {
+            const text = document.getElementById('scenarioText').value;
+            const resultsDiv = document.getElementById('results');
+            const button = document.getElementById('analyzeButton');
+            
+            if (!text.trim()) {
+                resultsDiv.innerHTML = '<p style="color: red;">الرجاء إدخال نص السيناريو أولاً.</p>';
+                return;
+            }
+
+            // تفعيل حالة التحميل وتعطيل الزر
+            button.disabled = true;
+            button.innerText = 'جاري التحليل...';
+            resultsDiv.innerHTML = '<div class="loading">جاري تحليل السيناريو الأخلاقي...</div>';
+
+            // إنشاء متجه وهمي للمحاكاة (يجب استبداله بـ NLP في الإنتاج)
+            const hash = s => s.split('').reduce((a, b) => { a = ((a << 5) - a) + b.charCodeAt(0); return a & a; }, 0);
+            const seed = hash(text);
+            const mockVector = Array.from({length: MOCK_INPUT_DIM}, (_, i) => Math.abs(Math.sin(seed + i)) * 0.5 + 0.25); 
+
+            const data = {
+                text: text,
+                vector: mockVector
+            };
+
+            fetch('/analyze_scenario/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            })
+            .then(response => response.json())
+            .then(data => {
+                button.disabled = false;
+                button.innerText = 'تحليل السيناريو وتوليد الأسئلة';
+
+                if (data.status === 'success') {
+                    resultsDiv.innerHTML = `
+                        <h2>نتائج التحليل الأولي:</h2>
+                        <p><strong>السياق المصنف:</strong> <span class="score-box">${data.context_classification}</span></p>
+                        <p><strong>الدرجات الأخلاقية (الثقة):</strong></p>
+                        <div style="margin-bottom: 20px;">
+                            <span class="score-box">المنفعة (UtiliNet): ${data.ethical_scores.UtiliNet.toFixed(4)}</span>
+                            <span class="score-box">الواجب (DeontoNet): ${data.ethical_scores.DeontoNet.toFixed(4)}</span>
+                            <span class="score-box">الفضيلة (VirtuNet): ${data.ethical_scores.VirtuNet.toFixed(4)}</span>
+                        </div>
+                        
+                        <h3>الأسئلة الاستجوابية المقترحة (لصنع القرار الحيادي):</h3>
+                        <ol>
+                            ${data.neutral_questions.map(q => `<li>${q}</li>`).join('')}
+                        </ol>
+                    `;
+                } else {
+                    resultsDiv.innerHTML = `<h2 style="color: red;">خطأ في التحليل:</h2><p>${data.message || data.detail}</p>`;
+                }
+            })
+            .catch(error => {
+                button.disabled = false;
+                button.innerText = 'تحليل السيناريو وتوليد الأسئلة';
+                resultsDiv.innerHTML = `<h2 style="color: red;">خطأ في الاتصال بالخادم:</h2><p>تأكد من أن الخادم يعمل: ${error}</p>`;
+            });
+        }
+    </script>
+</body>
+</html>
