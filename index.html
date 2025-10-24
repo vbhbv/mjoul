@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
@@ -22,6 +21,8 @@
 
     <script>
         const MOCK_INPUT_DIM = 256; 
+        // الرابط الفعلي لخادم FastAPI على Render
+        const API_ENDPOINT = 'https://mjoul.onrender.com/analyze_scenario/'; 
         
         function analyzeScenario() {
             const text = document.getElementById('scenarioText').value;
@@ -38,7 +39,7 @@
             button.innerText = 'جاري التحليل...';
             resultsDiv.innerHTML = '<div class="loading">جاري تحليل السيناريو الأخلاقي...</div>';
 
-            // إنشاء متجه وهمي للمحاكاة (يجب استبداله بـ NLP في الإنتاج)
+            // إنشاء متجه وهمي للمحاكاة
             const hash = s => s.split('').reduce((a, b) => { a = ((a << 5) - a) + b.charCodeAt(0); return a & a; }, 0);
             const seed = hash(text);
             const mockVector = Array.from({length: MOCK_INPUT_DIM}, (_, i) => Math.abs(Math.sin(seed + i)) * 0.5 + 0.25); 
@@ -48,12 +49,23 @@
                 vector: mockVector
             };
 
-            fetch('/analyze_scenario/', {
+            fetch(API_ENDPOINT, { // <-- استخدام الرابط الفعلي
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(data)
             })
-            .then(response => response.json())
+            .then(response => {
+                 // إضافة فحص لحالة HTTP لتجنب خطأ JSON/HTML
+                if (!response.ok) {
+                    throw new Error(`خطأ في خادم API (HTTP Status: ${response.status})`);
+                }
+                const contentType = response.headers.get("content-type");
+                if (contentType && contentType.includes("application/json")) {
+                    return response.json();
+                } else {
+                    throw new Error("خطأ: استجابة الخادم ليست بتنسيق JSON. تأكد من عمل API.");
+                }
+            })
             .then(data => {
                 button.disabled = false;
                 button.innerText = 'تحليل السيناريو وتوليد الأسئلة';
@@ -81,7 +93,7 @@
             .catch(error => {
                 button.disabled = false;
                 button.innerText = 'تحليل السيناريو وتوليد الأسئلة';
-                resultsDiv.innerHTML = `<h2 style="color: red;">خطأ في الاتصال بالخادم:</h2><p>تأكد من أن الخادم يعمل: ${error}</p>`;
+                resultsDiv.innerHTML = `<h2 style="color: red;">خطأ في الاتصال بالخادم:</h2><p>${error.message}</p>`;
             });
         }
     </script>
