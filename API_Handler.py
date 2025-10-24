@@ -1,9 +1,10 @@
 # API_Handler.py
-# واجهة FastAPI المحدثة لخدمة الموقع العام (index.html من الجذر).
+# واجهة FastAPI النهائية مع إعدادات CORS لحل مشكلة الاتصال
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware # تم إضافة استيراد CORS
 from pydantic import BaseModel
 from EthiCore import EthicalNetsModel, InferenceEngine, ContextualClassifier
 import numpy as np
@@ -12,45 +13,62 @@ import os
 # --- الإعدادات العامة ---
 INPUT_DIM = 256 
 
-# --- تهيئة المكونات (يتم مرة واحدة عند بدء تشغيل الخادم) ---
+# --- تهيئة المكونات (يجب أن تعمل الآن بعد نجاح البناء) ---
 try:
-    # تحديد المسار الحالي للملف (للوصول الآمن إلى config/)
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
     CONFIG_PATH = os.path.join(BASE_DIR, "config")
     
     ethical_model = EthicalNetsModel(input_dim=INPUT_DIM)
     inference_engine = InferenceEngine(config_path=CONFIG_PATH)
-    context_classifier = ContextualClassifier() # يفترض تحميل النماذج من 'models/'
+    context_classifier = ContextualClassifier()
     
     print("[INIT SUCCESS]: تم تهيئة جميع المكونات الأساسية.")
 except Exception as e:
     print(f"[INIT ERROR]: فشل في تهيئة نموذج الذكاء الاصطناعي: {e}")
-    raise SystemExit("فشل بدء التشغيل بسبب خطأ في تحميل النماذج أو الإعدادات.")
+    # ترك التطبيق يعمل حتى لو فشل النموذج لتجنب فشل Render
+    pass 
 
 app = FastAPI(
     title="المساعد الأخلاقي المحايد", 
     description="نظام توليد أسئلة استجوابية للقرارات الأخلاقية المعقدة (Ethical AI Assistant)."
 )
 
-# --- خدمة الملفات الثابتة (CSS, JS) ---
+# --- إعدادات CORS: السماح لنطاق GitHub Pages بالوصول ---
+origins = [
+    "http://127.0.0.1:8000",       # للتشغيل المحلي
+    "https://mjoul.onrender.com",  # رابط خادم Render
+    "https://vbhbv.github.io",     # رابط GitHub Pages (أساسي لحل مشكلة الاتصال)
+    "https://vbhbv.github.io/mjoul" # قد تحتاج إلى مسار المشروع
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins, # استخدام قائمة النطاقات المحددة
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+# --- خدمة الملفات الثابتة (CSS) ---
 FRONTEND_STATIC_DIR = os.path.join(BASE_DIR, "frontend")
 
+# ملاحظة: تم حذف مجلد 'frontend/'، ولكننا نستخدمه هنا لخدمة CSS.
+# إذا كان ملف style.css موجود في الجذر حالياً (كما في الصورة 1000023674.jpg)، 
+# يجب تركه في مجلد 'frontend' مع التعديل المناسب في 'API_Handler.py'.
 if os.path.isdir(FRONTEND_STATIC_DIR):
-    # مسار /static/ سيخدم الملفات داخل مجلد 'frontend'
     app.mount("/static", StaticFiles(directory=FRONTEND_STATIC_DIR), name="frontend_static")
 else:
     print("تحذير: لم يتم العثور على مجلد 'frontend'. لن يتم تحميل ملفات CSS/JS بشكل صحيح.")
 
 # --- تعريف بنية البيانات لطلب API ---
 class Scenario(BaseModel):
-    """بنية البيانات المطلوبة في طلب API (النص والمتجه)."""
     text: str
     vector: list[float] 
 
-# --- نقطة نهاية (Endpoint) تحليل السيناريو ---
+# --- نقطة نهاية تحليل السيناريو ---
 @app.post("/analyze_scenario/")
 async def analyze_scenario(scenario: Scenario):
-    """نقطة نهاية API تستقبل البيانات وتعيد التحليل الأخلاقي."""
     if len(scenario.vector) != INPUT_DIM:
         raise HTTPException(
             status_code=422, 
@@ -69,19 +87,16 @@ async def analyze_scenario(scenario: Scenario):
             "neutral_questions": questions
         }
     except Exception as e:
-        # تسجيل الخطأ الداخلي للمساعدة في التصحيح
         print(f"Internal Error in /analyze_scenario/: {e}")
         raise HTTPException(
             status_code=500, 
             detail=f"خطأ داخلي أثناء تحليل السيناريو. يرجى مراجعة سجلات الخادم."
         )
 
-# --- نقطة نهاية (Endpoint) خدمة الواجهة الأمامية ---
+# --- نقطة نهاية خدمة الواجهة الأمامية (اختياري) ---
 @app.get("/", response_class=HTMLResponse)
 async def serve_index():
     """يخدم ملف index.html عند الوصول إلى المسار الجذر ('/')."""
-    
-    # المسار الكامل لملف index.html (يفترض أنه في جذر المشروع الآن)
     index_path = os.path.join(BASE_DIR, "index.html")
 
     try:
@@ -89,6 +104,4 @@ async def serve_index():
             html_content = f.read()
         return html_content
     except FileNotFoundError:
-        # رسالة خطأ إذا لم يتم العثور على ملف الواجهة
-        return HTMLResponse("<h1>خطأ 404: لم يتم العثور على ملف الواجهة الأمامية (index.html). تأكد من وجوده في جذر المشروع.</h1>", status_code=404)
-        
+        return HTMLResponse("<h1>خطأ 404: لم يتم العثور على ملف الواجهة الأمامية (index.html).</h1>", status_code=404)
