@@ -1,5 +1,5 @@
 # EthiCore/InferenceEngine.py
-# محرك الاستدلال: يولد أسئلة استجوابية بناءً على الدرجات المعدلة (بما في ذلك الأوزان السياقية).
+# محرك الاستدلال: يجمع المخرجات ويولد أسئلة استجوابية بلغة مبسطة.
 
 import yaml
 import os
@@ -23,7 +23,6 @@ class InferenceEngine:
             with open(filepath, 'r', encoding='utf-8') as f:
                 return yaml.safe_load(f)
         except FileNotFoundError:
-            # رسالة خطأ واضحة إذا فشل تحميل الإعدادات
             print(f"خطأ: لم يتم العثور على ملف الإعدادات: {filepath}. استخدام الإعدادات الافتراضية.")
             return {}
         
@@ -54,18 +53,17 @@ class InferenceEngine:
         for net, score in adjusted_scores.items():
             base_t = base_thresholds.get(net, 0.75)
             
+            # أسئلة مبسطة للعامة:
             if score < warning_threshold:
-                questions.append(f"؟درجة اليقين في تحليل {net} منخفضة ({score:.2f}). ما هي المعلومات التي قد تعزز هذا الجانب؟")
+                questions.append(f"؟يبدو أن تحليل {net} غير واضح ({score:.2f}). ما هي الحقائق الجديدة التي قد تدعم هذا الجانب من التحليل؟")
             elif score < base_t:
-                questions.append(f"؟بالرغم من أن {net} لم يتجاوز عتبة التفعيل، هل يمكن ترجيحه لكونه يقدم رؤية {net}؟")
+                questions.append(f"؟تحليل {net} مقبول لكنه لم يصل بعد لقناعة كاملة. هل هناك عوامل تدعم رؤية {net} تستحق الاهتمام؟")
 
         # الخطوة 3: تحليل التعارضات
         if adjusted_scores:
             net_names = list(adjusted_scores.keys())
             
-            # (نحتاج لثلاث شبكات على الأقل لتحليل التعارض)
             if len(net_names) >= 3:
-                # العثور على الحد الأقصى والحد الأدنى للدرجات
                 max_net = max(adjusted_scores, key=adjusted_scores.get)
                 min_net = min(adjusted_scores, key=adjusted_scores.get)
                 max_score = adjusted_scores[max_net]
@@ -73,23 +71,21 @@ class InferenceEngine:
                 
                 if (max_score - min_score) > self.thresholds.get("conflict_difference_threshold", 0.35):
                     
-                    # استخدام قواعد الأولوية لتوجيه السؤال
                     context_rules = self.conflict_rules.get("contextual_overrides", {}).get(scenario_context, {})
                     priority_list = context_rules.get("priority", self.conflict_rules.get("default_priority", []))
                     
-                    # إذا كانت هناك أولوية محددة
+                    # أسئلة تعارض مبسطة:
                     if priority_list:
                          questions.append(
-                            f"؟يوجد تعارض حاد بين {max_net} و {min_net}. الأولوية المحددة في '{scenario_context}' هي '{priority_list[0]}'. هل يجب تجاوز هذه الأولوية في هذه الحالة تحديداً؟"
+                            f"؟يوجد خلاف كبير بين رؤية {max_net} ورؤية {min_net}. قواعد الأزمة تُرَجِّح '{priority_list[0]}'. هل هناك سبب قهري لكسر هذه الأولوية في هذه الحالة تحديداً؟"
                         )
                     else:
                         questions.append(
-                            f"؟هناك تعارض كبير بين {max_net} و {min_net}. ما هي الإطار الأخلاقي الذي يجب أن يسود لضمان قرار عادل؟"
+                            f"؟التحليلات متناقضة (أعلى قيمة: {max_net}، أدنى قيمة: {min_net}). ما هي القيمة الأخلاقية التي يجب أن تُتَوّج كأولوية في هذا القرار؟"
                         )
 
-        # الخطوة 4: توليد الأسئلة النهائية
+        # الخطوة 4: توليد الأسئلة النهائية (إذا كانت الدرجات متوازنة)
         if not questions:
             questions.append("؟تبدو الخيارات متوازنة ومقبولة. ما هو القرار الذي تتوقع أن يكون له التأثير الإيجابي الأكبر على سمعة الشركة على مدار العشر سنوات القادمة؟")
             
         return questions
-      
